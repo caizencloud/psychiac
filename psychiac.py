@@ -1,14 +1,19 @@
-import subprocess
 import os
+import sys
 import json
+import subprocess
 
-def main():
+def main(current_dir, target_dir):
+
+    # Change to the specified directory
+    os.chdir(target_dir)
+
     # delete changeset.json if present
     if os.path.exists("changeset.json"):
         os.remove("changeset.json")
 
     # Run the first command in the background and capture stdout and stderr to files
-    background_process = subprocess.Popen("mitmdump -s addon.py", shell=True, stdout=open("stdout.log", "w"), stderr=open("stderr.log", "w"))
+    background_process = subprocess.Popen(f"mitmdump -s {current_dir}/addon.py", shell=True, stdout=open("stdout.log", "w"), stderr=open("stderr.log", "w"))
 
     # wait until mitmproxy is up by checking if localhost:8080 is up
     while True:
@@ -39,5 +44,7 @@ def main():
             print(json.dumps(json.loads(f.read()), indent=4))
 
 if __name__ == "__main__":
-    main()
-
+    if len(sys.argv) != 2:
+        print("Usage: python psychiac.py <terraform directory>")
+        sys.exit(1)
+    main(os.getcwd(), sys.argv[1])

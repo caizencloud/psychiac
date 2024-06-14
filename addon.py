@@ -14,6 +14,7 @@ from datetime import datetime
 resources = {}
 project_iam_policies = {}
 compute_operations = {}
+run_operations = {}
 
 class TerraFaker:
   def __init__(self) -> None:
@@ -85,15 +86,94 @@ class GoogleFaker:
     if fr.host == "compute.googleapis.com":
       return GoogleComputeFaker().parse(flow)
 
+    if fr.host == "run.googleapis.com":
+      return GoogleRunFaker().parse(flow)
+
 
   def is_supported_service(self, host: str) -> bool:
-    supported_services = ['iam', 'compute', 'cloudresourcemanager']
+    supported_services = ['iam', 'compute', 'cloudresourcemanager', 'run', 'runadmin']
     # Parse host into subdomain and domain
     subdomain = host.split(".")[0]
     if subdomain in supported_services:
       return True
 
     return False
+
+
+class GoogleRunFaker:
+  def __init__(self) -> None:
+    self.num_count = 0
+
+  def parse(self, flow: http.HTTPFlow) -> dict:
+    fr = flow.request
+    pcs = flow.request.path_components
+
+    if fr.method == "PATCH" and pcs[0] == "v2":
+      # parse and store the cloudrun , return the operation id
+      run_operation_id = self.parse_patch_run(flow)
+
+      # return the create instance operation
+      return self.get_run_operation(run_operation_id)
+    elif fr.method == "GET" and pcs[0] == "v2" and pcs[6] == "operations":
+      run_operation_id = self.parse_run_operation_for_id(flow)
+      return self.get_run_operation(run_operation_id)
+    return None
+
+  def parse_patch_run(self, flow: http.HTTPFlow) -> str:
+    fr = flow.request
+    pcs = flow.request.path_components
+    api_version = pcs[0]
+    project_id = pcs[2]
+    location = pcs[4]
+    svc_name = pcs[6]
+    # parse the run instance body from the request
+    location_url = "https://run.googleapis.com/"+ api_version +"/projects/"+ project_id +"/locations/"+ location
+    run_url = location_url +"/services/"+ svc_name
+
+    run_detail = fr.json()
+    run_detail["name"] = run_url
+
+    # Store the cloudrun service as a resource
+    resources["gcp_run_service:"+ run_url] = run_detail
+
+    # parse the project-id and zone from the path componet
+    operation_id = random.randint(1000000000000000000, 9999999999999999999)
+    operation_name = "operation-run-patch-"+ project_id +"-"+ location +"-"+ svc_name
+
+    # Create a new run operation
+    operation = {
+      "name": f"projects/ln-prod-web/locations/us-central1/operations/{operation_id}"
+    }
+
+    logging.info("Storing operation in PENDING: "+ operation_name)
+    run_operations[operation_name] = operation
+
+    # return the operation id
+    return operation_name
+
+  def get_run_operation(self, operation_id: str) -> dict:
+    # return the operation by operation_id, advancing the state of the operation each time
+    logging.info("Getting a Cloud Run Operation: "+ operation_id)
+    operation = run_operations.get(operation_id)
+
+    # if pending, change to done
+    if operation.get("done") is None:
+      logging.info("Setting operation to DONE: "+ operation_id)
+      operation["done"] = True
+
+    return operation
+
+  def parse_run_operation_for_id(self, flow: http.HTTPFlow) -> str:
+    fr = flow.request
+    pcs = flow.request.path_components
+   
+    project_id = pcs[3]
+    location = pcs[5] 
+    svc = fr.json().get('name') or "no-svc-name"
+    operation_name = "operation-run-patch-"+ project_id +"-"+ location +"-"+ svc_name
+      
+    return operation_name
+
 
 class GoogleCrmFaker:
   def __init__(self) -> None:
@@ -102,6 +182,7 @@ class GoogleCrmFaker:
   def parse(self, flow: http.HTTPFlow) -> dict:
     fr = flow.request
     pcs = flow.request.path_components
+
 
     # Get the IAM policy for a project
     if fr.method == "POST" and pcs[0] == "v1" and pcs[1] == "projects" and ":getIamPolicy" in pcs[2]:
