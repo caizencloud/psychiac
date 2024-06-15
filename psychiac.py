@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import requests
 import subprocess
 
 def main(current_dir, target_dir):
@@ -32,6 +33,9 @@ def main(current_dir, target_dir):
     if os.path.exists("foo"):
         os.remove("foo")
 
+    if os.path.exists("foo.backup"):
+        os.remove("foo.backup")
+
     # Terminate the background process gracefully
     background_process.send_signal(subprocess.signal.SIGINT)
 
@@ -39,9 +43,20 @@ def main(current_dir, target_dir):
     background_process.wait()
 
     # pretty print json in changeset.json
+    changeset = {}
     if os.path.exists("changeset.json"):
         with open("changeset.json", "r") as f:
-            print(json.dumps(json.loads(f.read()), indent=4))
+            changeset = json.loads(f.read())
+
+    if changeset.get('assets') != []:
+        os.environ["HTTPS_PROXY"] = ""
+        os.environ["HTTP_PROXY"] = ""
+        changeset["threat"] = 0.900
+        caizen_url = "http://localhost:8000/changeset"
+        response = requests.post(caizen_url, data=json.dumps(changeset), headers={'Content-type': 'application/json'}) 
+        print(json.dumps(response.json(), indent=2))
+    else:
+        print("No terraform changes captured")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
