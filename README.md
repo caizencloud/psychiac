@@ -20,6 +20,9 @@
   </p>
 </div>
 
+> [!WARNING]
+> **Archived.** This proof-of-concept was built for the fwd:cloudsec 2024 talk and is no longer maintained.
+
 
 
 <!-- TABLE OF CONTENTS -->
